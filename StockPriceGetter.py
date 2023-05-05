@@ -1,18 +1,32 @@
+import logging
+import os
 import requests
+import pyodbc
+from datetime import datetime
+import azure.functions as func
 
-def main(req):
+def main(req: func.HttpRequest) -> func.HttpResponse:
     symbol = req.params.get('symbol')
     if not symbol:
-        return 'Please provide a stock symbol in the query string.'
+        return func.HttpResponse("Please provide a stock symbol as a parameter.", status_code=400)
+    
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 
-    url = f'https://finance.yahoo.com/quote/{symbol}/'
-    response = requests.get(url)
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        price = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
 
-    if response.status_code != 200:
-        return f'Error retrieving stock data for {symbol}'
+        # Write the stock price to Azure SQL database
+        connection_string = os.environ["SqlConnectionString"]
+        with pyodbc.connect(connection_string) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO StockPrices (Symbol, Price, Timestamp) VALUES ('{symbol}', {price}, '{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')}')") # Replace StockPrices with your table name
+                conn.commit()
 
-    start_index = response.text.find('data-reactid="50">') + len('data-reactid="50">')
-    end_index = response.text.find('</span>', start_index)
-    price = response.text[start_index:end_index]
+        return func.HttpResponse(f"The stock price for {symbol} is {price}.", status_code=200)
 
-    return f'The current price of {symbol} is {price}'
+    except Exception as e:
+        logging.error(e)
+        return func.HttpResponse("An error occurred while getting the stock price.", status_code=500)
