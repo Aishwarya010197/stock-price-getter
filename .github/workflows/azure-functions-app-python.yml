@@ -1,0 +1,48 @@
+name: Azure Function Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AZURE_FUNCTIONAPP_NAME: my-azure-function-app
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v2.1.5
+      with:
+        node-version: '14.x'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build
+      run: npm run build --if-present
+
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Set Azure Function App
+      id: set-functionapp
+      uses: azure/functions-action@v1
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        slot-name: ${{ env.AZURE_FUNCTIONAPP_SLOT_NAME }}
+
+    - name: Deploy to Azure Function App
+      uses: azure/functions-action@v1
+      with:
+        app-name: ${{ steps.set-functionapp.outputs.app-name }}
+        slot-name: ${{ steps.set-functionapp.outputs.slot-name }}
+        package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
